@@ -5,11 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class LoongPool {
 
@@ -23,65 +22,69 @@ public class LoongPool {
 
     private final LongAdder borrowCount;
 
+    private final Lock createConnLock;
+
     public LoongPool(LoongConfig loongConfig) {
         this.config = loongConfig;
         this.connectionQueue = new ArrayBlockingQueue<>(loongConfig.getMaxPoolSize());
         this.borrowCount = new LongAdder();
+        this.createConnLock = new ReentrantLock();
+        this.scheduledExecutor = new ScheduledThreadPoolExecutor(1);
 
-        this.scheduledExecutor = new ScheduledThreadPoolExecutor(
-                1, r -> new Thread(r, "blink-pool"),
-                (r, e) -> LOGGER.warn("[blink-pool 警告] 已经启动或运行了用于维持空闲连接的定时任务!"));
-
-        try {
-            this.startKeepIdleConnectionsJob();
-        } catch (Exception e) {
-            // 如果启动失败，则直接关闭 executor，并抛出异常.
-            this.scheduledExecutor.shutdownNow();
-            throw e;
-        }
+//        final int maxPoolSize = config.getMaximumPoolSize();
     }
 
     private void initCreateIdleConnections() {
-        // 初始化创建一个连接.
-        try {
-            this.createBlinkConnectionIntoPool();
-        } catch (SQLException e) {
-            throw new LoongPoolException("[blink-pool 异常] 初始化创建数据库连接时发生异常！", e);
-        }
-    }
-
-    /**
-     * 创建出最小可用的数据库连接数.
-     */
-    private void createMinIdleConnections() {
-//        this.createConnLock.lock();
+        this.createConnLock.lock();
         try {
             while (this.connectionQueue.size() < this.config.getMinIdle()) {
-                this.createBlinkConnectionIntoPool();
+                // 如果当前所有连接总数都小于最大连接数，那么就创建新的数据库连接，并放到连接池中.
+                if ((this.connectionQueue.size() + this.borrowCount.intValue()) < this.config.getMaxPoolSize()) {
+                    LoongConnection connection = this.newLoongConnection();
+                    if (!this.connectionQueue.offer(connection)) {
+                        connection.closeReally();
+                        LOGGER.debug("[blink-pool 提示] 连接池已满,无法再将该数据库连接放到连接池中，将直接关闭该连接！");
+                    }
+                }
             }
         } catch (SQLException e) {
             throw new LoongPoolException("[blink-pool 异常] 创建数据库连接时发生异常！", e);
         } finally {
-//            this.createConnLock.unlock();
+            this.createConnLock.unlock();
         }
     }
 
-    private void createBlinkConnectionIntoPool() throws SQLException {
-        // 如果当前所有连接总数都小于最大连接数，那么就创建新的数据库连接，并放到连接池中.
-        if ((this.connectionQueue.size() + this.borrowCount.intValue()) < this.config.getMaxPoolSize()) {
-            LoongConnection connection = this.newCamilleConnection();
-            if (!this.connectionQueue.offer(connection)) {
-                connection.closeReally();
-                LOGGER.debug("[blink-pool 提示] 连接池已满,无法再将该数据库连接放到连接池中，将直接关闭该连接！");
-            }
-        }
-    }
-
-    private LoongConnection newCamilleConnection() throws SQLException {
-        LoongConnection connection = new LoongConnection(this.config);
-//        this.stats.getCreations().increment();
+    private LoongConnection newLoongConnection() throws SQLException {
+        LoongConnection connection = new LoongConnection(this.config, this);
         // TODO
         LOGGER.debug("");
         return connection;
+    }
+
+    /**
+     * 从池中拿出一个
+     */
+    public void borrowConnection(LoongConnection conn) {
+        return;
+    }
+
+    /**
+     * 将释放的连接放回池中
+     */
+    public void returnConnection(LoongConnection conn) {
+        this.borrowCount.decrement();
+    }
+
+    /**
+     * 关闭连接池中的若干连接.
+     */
+    public synchronized void shutdown() {
+        // 设置已关闭，并关闭定时任务的调度器.
+//        this.closed = true;
+        this.scheduledExecutor.shutdown();
+
+        // 循环关闭和清空连接池.
+        this.connectionQueue.forEach(LoongConnection::closeReally);
+        this.connectionQueue.clear();
     }
 }
