@@ -42,7 +42,7 @@ public class LoongDataSource implements DataSource, Closeable {
             connection = this.pool.borrowConnection();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new LoongPoolException("[blink-pool 异常] 获取数据库连接的线程已被中断!", e);
+            throw new LoongPoolException("[loong-pool 异常] 获取数据库连接的线程已被中断!", e);
         }
         // 获取当前最新的时间，并将借用数 +1，
         final long endNanoTime = System.nanoTime();

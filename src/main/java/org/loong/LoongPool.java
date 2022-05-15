@@ -81,7 +81,7 @@ public class LoongPool {
 
             connection = this.connectionQueue.poll(1000L, TimeUnit.MILLISECONDS);
             if (connection == null) {
-                throw new SQLException("[blink-pool 异常] 从连接池中获取数据库连接已超时，建议调大最大连接数的配置项或者优化慢 SQL!");
+                throw new SQLException("[loong-pool 异常] 从连接池中获取数据库连接已超时，建议调大最大连接数的配置项或者优化慢 SQL!");
             }
         }
 
