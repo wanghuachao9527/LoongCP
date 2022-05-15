@@ -29,6 +29,8 @@ public class LoongConfig {
     /* 连接超时时间 30秒 */
     private volatile long connectionTimeout;
 
+    private String connectionTestQuery;
+
     /* 校验超时时间 5秒 */
     private volatile long validationTimeout;
 
@@ -66,6 +68,10 @@ public class LoongConfig {
 //        keepaliveTime = DEFAULT_KEEPALIVE_TIME;
     }
 
+    public void validate() {
+
+    }
+
     public long getMaxLifetime() {
         return maxLifetime;
     }
@@ -80,6 +86,14 @@ public class LoongConfig {
 
     public void setConnectionTimeout(long connectionTimeout) {
         this.connectionTimeout = connectionTimeout;
+    }
+
+    public String getConnectionTestQuery() {
+        return connectionTestQuery;
+    }
+
+    public void setConnectionTestQuery(String connectionTestQuery) {
+        this.connectionTestQuery = connectionTestQuery;
     }
 
     public long getValidationTimeout() {

@@ -19,6 +19,8 @@ public class LoongConnection implements Connection {
 
     private final Connection connection;
 
+    private long lastBorrowNanoTime;
+
     public LoongConnection(LoongConfig loongConfig, LoongPool loongPool) throws SQLException {
         this.config = loongConfig;
         this.pool = loongPool;
@@ -31,7 +33,7 @@ public class LoongConnection implements Connection {
         try {
             Class.forName(driverClass);
         } catch (ClassNotFoundException e) {
-            throw new LoongPoolException("[camille-pool 异常] 未找到类路径名为【" + driverClass + "】的驱动类 Class.", e);
+            throw new LoongPoolException("[loong-pool 异常] 未找到类路径名为【" + driverClass + "】的驱动类 Class.", e);
         }
     }
 
@@ -39,8 +41,20 @@ public class LoongConnection implements Connection {
         try {
             this.connection.close();
         } catch (Exception e) {
-            LOGGER.error("[blink-pool 提示] 关闭数据库连接时失败，错误描述: {}", e.getMessage());
+            LOGGER.error("[loong-pool 提示] 关闭数据库连接时失败，错误描述: {}", e.getMessage());
         }
+    }
+
+    public boolean isAvailable() throws SQLException {
+        return false;
+    }
+
+    public long getLastBorrowNanoTime() {
+        return lastBorrowNanoTime;
+    }
+
+    public void setLastBorrowNanoTime(long lastBorrowNanoTime) {
+        this.lastBorrowNanoTime = lastBorrowNanoTime;
     }
 
     /** ------------------下面都是Connection的实现方法-------------------------- */

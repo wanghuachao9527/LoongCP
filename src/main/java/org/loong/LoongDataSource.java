@@ -1,5 +1,9 @@
 package org.loong;
 
+import org.loong.exception.LoongPoolException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.sql.DataSource;
 import java.io.Closeable;
 import java.io.IOException;
@@ -8,16 +12,21 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
-import java.util.logging.Logger;
 
 public class LoongDataSource implements DataSource, Closeable {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(LoongDataSource.class);
 
     private LoongConfig config;
 
     private LoongPool pool;
 
     public LoongDataSource(LoongConfig loongConfig) {
+        loongConfig.validate();
         this.config = loongConfig;
+        this.pool = new LoongPool(this.config);
+        LOGGER.info("[loong-pool 提示] 创建连接池完毕，最小空闲连接数:【{}】,最大连接数:【{}】.",
+                this.config.getMinIdle(), this.config.getMaxPoolSize());
     }
 
     /** ------------------下面都是DataSource的实现方法-------------------------- */
@@ -28,12 +37,23 @@ public class LoongDataSource implements DataSource, Closeable {
 
     @Override
     public Connection getConnection() throws SQLException {
-        return null;
+        LoongConnection connection;
+        try {
+            connection = this.pool.borrowConnection();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LoongPoolException("[blink-pool 异常] 获取数据库连接的线程已被中断!", e);
+        }
+        // 获取当前最新的时间，并将借用数 +1，
+        final long endNanoTime = System.nanoTime();
+        connection.setLastBorrowNanoTime(endNanoTime);
+        this.pool.getLastActiveNanoTime().lazySet(endNanoTime);
+        return connection;
     }
 
     @Override
     public Connection getConnection(String username, String password) throws SQLException {
-        return null;
+        return this.getConnection();
     }
 
     @Override
@@ -67,7 +87,7 @@ public class LoongDataSource implements DataSource, Closeable {
     }
 
     @Override
-    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+    public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
         return DriverManager.getDrivers().nextElement().getParentLogger();
     }
 }
